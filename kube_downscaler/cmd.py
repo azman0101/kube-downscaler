@@ -86,4 +86,9 @@ def get_parser():
         "--deployment-time-annotation",
         help="Annotation that contains a resource's last deployment time, overrides creationTime. Use in combination with --grace-period.",
     )
+    parser.add_argument(
+        "--calendar",
+        help="Default calendar provider (default: google)",
+        default=os.getenv("DEFAULT_CAL", "google"),
+    )
     return parser

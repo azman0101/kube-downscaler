@@ -7,7 +7,10 @@ from kube_downscaler import cmd
 from kube_downscaler import shutdown
 from kube_downscaler.scaler import scale
 
-logger = logging.getLogger("downscaler")
+#from .googlecalendar import GoogleCalendar
+from .kubecalendar import CalendarFactory
+
+logger = logging.getLogger('downscaler')
 
 
 def main(args=None):
@@ -21,6 +24,12 @@ def main(args=None):
 
     config_str = ", ".join(f"{k}={v}" for k, v in sorted(vars(args).items()))
     logger.info(f"Downscaler v{__version__} started with {config_str}")
+
+    calendar = CalendarFactory(provider=args.calendar).create()()
+    calendar.load()
+    calendar.connect()
+    # TODO: mecanisme to override or not the default_downtime
+    args.default_downtime = calendar.next_range
 
     if args.dry_run:
         logger.info("**DRY-RUN**: no downscaling will be performed!")
@@ -75,6 +84,7 @@ def run_loop(
                 grace_period=grace_period,
                 downtime_replicas=downtime_replicas,
                 deployment_time_annotation=deployment_time_annotation,
+
             )
         except Exception as e:
             logger.exception(f"Failed to autoscale: {e}")

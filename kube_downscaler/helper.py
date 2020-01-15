@@ -31,6 +31,9 @@ def matches_time_spec(time: datetime.datetime, spec: str):
         absolute_match = ABSOLUTE_TIME_SPEC_PATTERN.match(spec_)
         if absolute_match and _matches_absolute_time_spec(time, absolute_match):
             return True
+        # rrule_match = rrulestr(spec_)
+        # if rrule_match:
+        #     print(list(rrule_match))
         if not recurring_match and not absolute_match:
             raise ValueError(
                 f'Time spec value "{spec_}" does not match format ("Mon-Fri 06:30-20:30 Europe/Berlin" or "2019-01-01T00:00:00+00:00-2019-01-02T12:34:56+00:00")'
@@ -64,5 +67,6 @@ def _matches_absolute_time_spec(time: datetime.datetime, match: Match):
 
 def get_kube_api():
     config = pykube.KubeConfig.from_env()
+    api = pykube.HTTPClient(config)
     api = pykube.HTTPClient(config)
     return api
