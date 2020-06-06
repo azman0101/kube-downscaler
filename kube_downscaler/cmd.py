@@ -91,4 +91,10 @@ def get_parser():
         help="Default calendar provider (default: google)",
         default=os.getenv("DEFAULT_CAL", "google"),
     )
+    parser.add_argument(
+        "--calendar-override-downtime",
+        help="Default downtime is overrided by calendar (default: false)",
+        default=os.getenv("CALENDAR_OVERRIDE_DOWNTIME", False),
+        action="store_true"
+    )
     return parser

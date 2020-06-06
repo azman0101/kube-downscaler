@@ -9,8 +9,9 @@ class CalendarFactory:
         super().__init__()
 
     def create(self):
-        module = importlib.import_module(self._provider + 'calendar')
-
-        class_ = getattr(module, self._provider.capitalize() + 'Calendar')
-
-        return class_
+        if isinstance(self._provider, str):
+            module = importlib.import_module('.' + self._provider + 'calendar', package=__package__)
+            class_ = getattr(module, self._provider.capitalize() + 'Calendar')
+            return class_()
+        else:
+            return self._provider

@@ -6,6 +6,7 @@ import logging
 import os.path
 from abc import ABC
 import abc
+import json
 
 import humanize
 from dateutil.parser import *
@@ -54,11 +55,10 @@ logger.setLevel(logging.INFO)
 #     print("%s" % humanize.naturaltime(datetime.datetime.now().astimezone(get_localzone()) - parse(start)))
 #
 
-
 class KubeCalendar(metaclass=abc.ABCMeta):
     _credentials: dict = None
     _client = None
-    _next_range = None
+    _next_range = list()
 
     DEFAULT_DOWNTIME = None
     DEFAULT_UPTIME = None
@@ -80,11 +80,17 @@ class KubeCalendar(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def load(self, credentials: dict = None):
-        self.credentials = credentials
+        if not self.credentials:
+            self.credentials = credentials
 
     @abc.abstractmethod
     def connect(self):
         return
+
+    @abc.abstractmethod
+    def override_downtime(self):
+        # TODO: mecanisme to override or not the default_downtime
+        return self.next_range
 
 
 class GoogleCalendar(KubeCalendar, ABC):
@@ -92,11 +98,22 @@ class GoogleCalendar(KubeCalendar, ABC):
     CAL_ID_VAR_NAME = "CAL_ID"
     DOWNTIME_STRING_VAR_NAME = "DEFAULT_DOWNTIME_STRING"
     _events = None
-    _next_range = None
+    _next_range = list()
+    _service = None
+    _events_list_handler = None
 
     @property
     def next_range(self):
         return self._next_range
+
+    @next_range.setter
+    def next_range(self, next_range):
+        return
+
+    @property
+    def events_list_handler(self):
+        return self._events_list_handler
+
 
     @property
     def credentials(self):
@@ -107,7 +124,13 @@ class GoogleCalendar(KubeCalendar, ABC):
         self._credentials = new_credentials
 
     def load(self, credentials: dict = None):
-        if credentials is None:
+        """
+            Load credentials
+        :param credentials:
+        :return:
+        """
+
+        if credentials is None and self._credentials is None:
             credentials = dict()
             if self.API_KEY_VAR_NAME in os.environ:
                 api_key = os.environ.get(self.API_KEY_VAR_NAME).encode('utf-8')
@@ -120,16 +143,9 @@ class GoogleCalendar(KubeCalendar, ABC):
     def connect(self):
         if self.API_KEY_VAR_NAME in self._credentials.keys():
             try:
-                service = build('calendar', 'v3', developerKey=self._credentials[self.API_KEY_VAR_NAME],
+                self._service = build('calendar', 'v3', developerKey=self._credentials[self.API_KEY_VAR_NAME],
                                 cache_discovery=False)
-                now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
-                one_week = relativedelta(weeks=+1)
-                in_one_week = datetime.datetime.utcnow() + one_week
-                events_result = service.events().list(calendarId=self._credentials[self.CAL_ID_VAR_NAME],
-                                                      timeMin=now,
-                                                      singleEvents=True, timeMax=in_one_week.isoformat() + 'Z',
-                                                      ).execute()
-                self._get_calendar_events(service, events_result)
+                self._get_calendar_events()
             except HttpError as err:
                 logger.info('An HTTP error has occurred.  Please check YT Developer Key.')
                 return err
@@ -146,7 +162,23 @@ class GoogleCalendar(KubeCalendar, ABC):
                 logger.info('Keyword must be a string. %s' % e)
                 raise TypeError
 
-    def _get_calendar_events(self, service: Resource, events_result: dict):
+    def override_downtime(self):
+        return super().override_downtime()
+
+    def _retreive_events(self, service: Resource = None):
+        now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+        one_week = relativedelta(weeks=+1)
+        in_one_week = datetime.datetime.utcnow() + one_week
+        self._events_list_handler = service.events().list(calendarId=self._credentials[self.CAL_ID_VAR_NAME],
+                                              timeMin=now,
+                                              singleEvents=True, timeMax=in_one_week.isoformat() + 'Z',
+                                              )
+        return self._events_list_handler.execute()
+
+    def _get_calendar_events(self, service: Resource = None):
+        if not service:
+            service = self._service
+        events_result = self._retreive_events(service)
         # Get event with a specific summary
         events = [e for e in events_result.get('items', []) if
                   e['summary'] == os.environ.get(self.DOWNTIME_STRING_VAR_NAME)]
@@ -157,7 +189,8 @@ class GoogleCalendar(KubeCalendar, ABC):
         else:
             self._events = events
         events.sort(key=lambda item: parse(item['start']['dateTime']), reverse=False)
-        self._store_calendar_next_events(events[0])
+        self._store_calendar_next_events(events)
+
         for event in events:
             if event.get('recurringEventId', None):
                 recurring = '==> Is a recurring event...'
@@ -176,6 +209,10 @@ class GoogleCalendar(KubeCalendar, ABC):
             # 2020-05-04T20:00:00+02:00
 
     def _store_calendar_next_events(self, next_range):
-        start = next_range['start'].get('dateTime', next_range['start'].get('date'))
-        stop = next_range['end'].get('dateTime', next_range['end'].get('date'))
-        self._next_range = "{}-{}".format(start, stop)
+        try:
+            for r in next_range:
+                start = r['start'].get('dateTime', r['start'].get('date'))
+                stop = r['end'].get('dateTime', r['end'].get('date'))
+                self._next_range.append("{}-{}".format(start, stop))
+        except TypeError as e:
+            logger.info("Not next range retreived %s" % e)

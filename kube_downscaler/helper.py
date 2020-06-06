@@ -68,5 +68,4 @@ def _matches_absolute_time_spec(time: datetime.datetime, match: Match):
 def get_kube_api():
     config = pykube.KubeConfig.from_env()
     api = pykube.HTTPClient(config)
-    api = pykube.HTTPClient(config)
     return api
